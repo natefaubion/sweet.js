@@ -648,4 +648,13 @@ describe("macro expander", function() {
         expect(x).to.be(42);
     });
 
+    it("should allow an ellipsis in literal groups", function() {
+        macro m {
+            rule { $x $[...] $y } => {
+                $x + $y
+            }
+        }
+        expect(m 42 ... 12).to.be(54);
+    });
+
 });

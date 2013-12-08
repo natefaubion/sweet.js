@@ -157,78 +157,89 @@
         return next;
     }
 
-    function loadPattern(patterns) {
+    function loadPattern(patterns, isLiteralGroup) {
 
-        return _.chain(patterns)
         // first pass to merge the pattern variables together
-            .reduce(function(acc, patStx, idx) {
-                var last = patterns[idx-1];
-                var lastLast = patterns[idx-2];
-                var next = patterns[idx+1];
-                var nextNext = patterns[idx+2];
+        var res = _.reduce(patterns, function(acc, patStx, idx) {
+            var last = patterns[idx-1];
+            var lastLast = patterns[idx-2];
+            var next = patterns[idx+1];
+            var nextNext = patterns[idx+2];
+            var isLitGroup = false;
 
-                // skip over the `:lit` part of `$x:lit`
-                if (patStx.token.value === ":") {
-                    if(last && isPatternVar(last) && !isPatternVar(next)) {
-                        return acc;
-                    }
-                }
-                if (last && last.token.value === ":") {
-                    if (lastLast && isPatternVar(lastLast) && !isPatternVar(patStx)) {
-                        return acc;
-                    }
-                }
-                // skip over $
-                if (patStx.token.value === "$" &&
-                    next && next.token.type === parser.Token.Delimiter) {
+            // skip over the `:lit` part of `$x:lit`
+            if (patStx.token.value === ":") {
+                if(last && isPatternVar(last) && !isPatternVar(next)) {
                     return acc;
                 }
+            }
+            if (last && last.token.value === ":") {
+                if (lastLast && isPatternVar(lastLast) && !isPatternVar(patStx)) {
+                    return acc;
+                }
+            }
+            // skip over $
+            if (patStx.token.value === "$" &&
+                next && next.token.type === parser.Token.Delimiter) {
+                return acc;
+            }
 
-                if (isPatternVar(patStx)) {
-                    if (next && next.token.value === ":" && !isPatternVar(nextNext)) {
-                        if (typeof nextNext === 'undefined') {
-                            throw new Error("expecting a pattern class following a `:`");
-                        }
-                        patStx.class = nextNext.token.value;
-                    } else {
-                        patStx.class = "token";
+            if (isPatternVar(patStx)) {
+                if (next && next.token.value === ":" && !isPatternVar(nextNext)) {
+                    if (typeof nextNext === 'undefined') {
+                        throw new Error("expecting a pattern class following a `:`");
                     }
-                } else if (patStx.token.type === parser.Token.Delimiter) {
-                    if (last && last.token.value === "$") {
-                        patStx.class = "pattern_group";
-                    }
-                    patStx.token.inner = loadPattern(patStx.token.inner);
+                    patStx.class = nextNext.token.value;
                 } else {
-                    patStx.class = "pattern_literal";
+                    patStx.class = "token";
                 }
-                return acc.concat(patStx);
-                // then second pass to mark repeat and separator
-            }, []).reduce(function(acc, patStx, idx, patterns) {
-                var separator = patStx.separator || " ";
-                var repeat = patStx.repeat || false;
-                var next = patterns[idx+1];
-                var nextNext = patterns[idx+2];
+            } else if (patStx.token.type === parser.Token.Delimiter) {
+                if (last && last.token.value === "$") {
+                    patStx.class = "pattern_group";
+                    if (patStx.token.value === '[]') {
+                        isLitGroup = true;
+                    }
+                }
+                patStx.token.inner = loadPattern(patStx.token.inner, isLitGroup);
+            } else {
+                patStx.class = "pattern_literal";
+            }
+            return acc.concat(patStx);
+        }, []);
+            
+        // If we are in a $[...] literal group, we want to leave all the
+        // tokens as is.
+        if (isLiteralGroup) {
+            return res;
+        }
 
-                if (next && next.token.value === "...") {
-                    repeat = true;
-                    separator = " ";
-                } else if (delimIsSeparator(next) &&
-                           nextNext && nextNext.token.value === "...") {
-                    repeat = true;
-                    parser.assert(next.token.inner.length === 1,
-                           "currently assuming all separators are a single token");
-                    separator = next.token.inner[0].token.value;
-                }
+        // then second pass to mark repeat and separator
+        return _.reduce(res, function(acc, patStx, idx, patterns) {
+            var separator = patStx.separator || " ";
+            var repeat = patStx.repeat || false;
+            var next = patterns[idx+1];
+            var nextNext = patterns[idx+2];
 
-                // skip over ... and (,)
-                if (patStx.token.value === "..."||
-                    (delimIsSeparator(patStx) && next && next.token.value === "...")) {
-                    return acc;
-                }
-                patStx.repeat = repeat;
-                patStx.separator = separator;
-                return acc.concat(patStx);
-            }, []).value();
+            if (next && next.token.value === "...") {
+                repeat = true;
+                separator = " ";
+            } else if (delimIsSeparator(next) &&
+                       nextNext && nextNext.token.value === "...") {
+                repeat = true;
+                parser.assert(next.token.inner.length === 1,
+                       "currently assuming all separators are a single token");
+                separator = next.token.inner[0].token.value;
+            }
+
+            // skip over ... and (,)
+            if (patStx.token.value === "..."||
+                (delimIsSeparator(patStx) && next && next.token.value === "...")) {
+                return acc;
+            }
+            patStx.repeat = repeat;
+            patStx.separator = separator;
+            return acc.concat(patStx);
+        }, []);
     }
 
 
