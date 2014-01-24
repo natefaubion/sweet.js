@@ -70,7 +70,7 @@ export #
 
 
 let syntaxCase = macro {
-    function(stx) {
+    function(stx, context) {
         var name_stx = stx[0];
         var here = quoteSyntax{here};
 
@@ -195,6 +195,25 @@ let syntaxCase = macro {
                     makeIdent("class", here),
                     makePunc(":", here),
                     makeValue(pat.class, here)
+                ]);
+            }
+            if (typeof pat.expandName !== 'undefined') {
+                // console.log('CONTEXT', __originalLexicalContext, pat.expandName[0]);
+                // var name = makeIdent(pat.expandName.map(unwrapSyntax).join(""),
+                //                      __originalLexicalContext);
+                res = res.concat([
+                    makePunc(",", here),
+                    makeIdent("expandName", here),
+                    makePunc(":", here),
+                    makeValue(pat.expandName.map(unwrapSyntax).join(""), here),
+                    makePunc(",", here),
+                    makeIdent("lexicalContext", here),
+                    makePunc(":", here),
+                    makeIdent("__originalLexicalContext", here),
+                    makePunc(",", here),
+                    makeIdent("context", here),
+                    makePunc(":", here),
+                    makeIdent("context", name_stx)
                 ]);
             }
             if (typeof pat.repeat !== 'undefined') {

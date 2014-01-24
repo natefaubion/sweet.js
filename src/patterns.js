@@ -213,8 +213,10 @@
             .reduce(function(acc, patStx, idx) {
                 var last = patterns[idx-1];
                 var lastLast = patterns[idx-2];
+                var lastLastLast = patterns[idx-3];
                 var next = patterns[idx+1];
                 var nextNext = patterns[idx+2];
+                var nextNextNext = patterns[idx+3];
 
                 // skip over the `:lit` part of `$x:lit`
                 if (patStx.token.value === ":") {
@@ -226,6 +228,10 @@
                     if (lastLast && isPatternVar(lastLast) && !isPatternVar(patStx)) {
                         return acc;
                     }
+                }
+                if (patStx.token.type == parser.Token.Delimiter &&
+                    lastLastLast && lastLastLast.class === "expand") {
+                    return acc;
                 }
                 // skip over $
                 if (patStx.token.value === "$" &&
@@ -239,6 +245,14 @@
                             throwSyntaxError("patterns", "expecting a pattern class following a `:`", next);
                         }
                         patStx.class = nextNext.token.value;
+                        if (patStx.class === "expand") {
+                            if (nextNextNext.token.type === parser.Token.Delimiter &&
+                                nextNextNext.token.value === "()") {
+                                patStx.expandName = nextNextNext.token.inner;
+                            } else {
+                                throwSyntaxError("patterns", "expecting macro name", nextNext);
+                            }
+                        }
                     } else {
                         patStx.class = "token";
                     }
@@ -306,7 +320,7 @@
 
 
     // (Str, [...CSyntax], MacroEnv) -> {result: null or [...CSyntax], rest: [...CSyntax]}
-    function matchPatternClass (patternClass, stx, env) {
+    function matchPatternClass (patternClass, stx, env, patternObj) {
         var result, rest, match;
         // pattern has no parse class
         if (patternClass === "token" &&
@@ -342,6 +356,27 @@
             } else {
                 result = match.destructed || match.result.destruct(false);
                 rest = match.rest;
+            }
+        } else if (stx.length > 0 && patternClass === "expand") {
+            var ident = syntax.makeIdent(patternObj.expandName, patternObj.lexicalContext);
+            var macroObj = env.get(expander.resolve(ident));
+            if (macroObj) {
+                var rt;
+                try {
+                    // Ident here is wrong likely, just needed something for the macro name
+                    rt = macroObj.fn([ident].concat(stx), patternObj.context, [], []);
+                    result = rt.result;
+                    rest = rt.rest;
+                } catch (e) {
+                    if (e.type && e.type === "SyntaxCaseError") {
+                        result = null,
+                        rest = stx;
+                    } else {
+                        throw e;
+                    } 
+                }
+            } else {
+                syntax.throwSyntaxError('patterns', 'Macro not in scope');
             }
         } else {
             result = null;
@@ -587,7 +622,7 @@
                     rest = stx;
                 }
             } else {
-                match = matchPatternClass(pattern.class, stx, env);
+                match = matchPatternClass(pattern.class, stx, env, pattern);
 
                 success = match.result !== null;
                 rest = match.rest;

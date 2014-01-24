@@ -1814,6 +1814,7 @@
             throwSyntaxError: throwSyntaxError,
             prettyPrint: syn.prettyPrint,
             parser: parser,
+            __originalLexicalContext: mac.name[0],
             __fresh: fresh,
             _: _,
             patternModule: patternModule,
